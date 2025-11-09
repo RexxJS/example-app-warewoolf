@@ -811,6 +811,25 @@ class WoolfRexxHandler {
       metadata.reasoning = params.reasoning;
     }
 
+    // Parse alternate confidences (optional)
+    if (params['alternate-confidences']) {
+      const altConfsParam = params['alternate-confidences'];
+      let altConfs = [];
+
+      if (typeof altConfsParam === 'string') {
+        try {
+          altConfs = JSON.parse(altConfsParam);
+        } catch (e) {
+          // Try comma-separated
+          altConfs = altConfsParam.split(',').map(s => parseFloat(s.trim()));
+        }
+      } else if (Array.isArray(altConfsParam)) {
+        altConfs = altConfsParam.map(c => parseFloat(c));
+      }
+
+      metadata.alternateConfidences = altConfs;
+    }
+
     return this.otDoc.applyQuickCorrection(
       userId,
       index,

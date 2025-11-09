@@ -507,7 +507,11 @@ async def analyze_word(word, position):
     # Check if it's a known typo
     if word in COMMON_TYPOS:
         main_fix = COMMON_TYPOS[word]
-        alternates = get_alternates(word)
+        alternates_with_confidence = get_alternates(word)
+
+        # Extract just the alternate words and confidence scores
+        alternates = [alt for alt, _ in alternates_with_confidence]
+        alternate_confidences = [conf for _, conf in alternates_with_confidence]
 
         return {
             'command': 'apply-quick-correction',
@@ -519,6 +523,7 @@ async def analyze_word(word, position):
                 'correction': main_fix,
                 'alternates': alternates,
                 'confidence': 0.95,
+                'alternate-confidences': alternate_confidences,
                 'type': 'spelling'
             }
         }
@@ -535,6 +540,7 @@ async def analyze_word(word, position):
                 'correction': 'extremely',
                 'alternates': ['remarkably', 'significantly'],
                 'confidence': 0.75,
+                'alternate-confidences': [0.72, 0.68],
                 'type': 'style'
             }
         }
@@ -554,10 +560,11 @@ COMMON_TYPOS = {
 }
 
 def get_alternates(word):
-    """Get alternate corrections"""
+    """Get alternate corrections with confidence scores"""
+    # Format: word -> [(alternate, confidence), ...]
     alternates_map = {
-        'similarley': ['summarily'],
-        'very': ['extremely', 'remarkably'],
+        'similarley': [('summarily', 0.78)],
+        'very': [('extremely', 0.85), ('remarkably', 0.72)],
         # ...
     }
     return alternates_map.get(word, [])
@@ -807,6 +814,22 @@ app.listen(5000, () => {
 
 ### Hover UI for Corrections
 
+The tooltip shows the current correction with confidence, plus options to revert or pick alternates:
+
+```
+┌──────────────────────────────┐
+│ similarly      92% ✓         │ (currently applied)
+├──────────────────────────────┤
+│ ↺ similarley    (original)   │ (revert to what user typed)
+│ ↻ summarily        78%       │ (alternate suggestion)
+└──────────────────────────────┘
+```
+
+**Visual breakdown:**
+- **Top row** (blue background): Currently applied correction with confidence and checkmark
+- **Middle row**: Revert to original (no confidence - it's the user's text)
+- **Bottom rows**: Alternates with their own confidence scores
+
 To show revert/alternate options on hover, add UI code to WareWoolf:
 
 ```javascript
@@ -835,9 +858,32 @@ function showCorrectionTooltip(x, y, correction) {
   tooltip.style.left = x + 'px';
   tooltip.style.top = y + 'px';
 
-  // Revert button
+  // Get confidence score (0-1 float)
+  const confidence = correction.metadata?.confidence || 0;
+  const confidencePercent = Math.round(confidence * 100);
+
+  // Current applied correction (show as selected)
+  const current = document.createElement('div');
+  current.className = 'correction-current';
+  current.innerHTML = `
+    <strong>${correction.applied}</strong>
+    <span class="confidence">${confidencePercent}%</span>
+    <span class="checkmark">✓</span>
+  `;
+  tooltip.appendChild(current);
+
+  // Divider
+  const divider = document.createElement('hr');
+  tooltip.appendChild(divider);
+
+  // Revert button (back to original)
   const revert = document.createElement('button');
-  revert.textContent = `↺ ${correction.original}`;
+  revert.className = 'correction-option';
+  revert.innerHTML = `
+    <span class="icon">↺</span>
+    <span class="text">${correction.original}</span>
+    <span class="label">(original)</span>
+  `;
   revert.onclick = async () => {
     await window.ADDRESS_WOOLF.run('revert-correction', {
       'correction-id': correction.correctionId,
@@ -845,13 +891,24 @@ function showCorrectionTooltip(x, y, correction) {
     });
     tooltip.remove();
   };
-
   tooltip.appendChild(revert);
 
-  // Alternate buttons
+  // Alternate buttons with confidence scores
   correction.alternates.forEach((alt, i) => {
     const btn = document.createElement('button');
-    btn.textContent = `↻ ${alt}`;
+    btn.className = 'correction-option';
+
+    // Get alternate-specific confidence if available
+    const altConfidence = correction.metadata?.alternateConfidences?.[i];
+    const altConfidenceHTML = altConfidence
+      ? `<span class="confidence">${Math.round(altConfidence * 100)}%</span>`
+      : `<span class="confidence dim">—</span>`;
+
+    btn.innerHTML = `
+      <span class="icon">↻</span>
+      <span class="text">${alt}</span>
+      ${altConfidenceHTML}
+    `;
     btn.onclick = async () => {
       await window.ADDRESS_WOOLF.run('switch-to-alternate', {
         'correction-id': correction.correctionId,
@@ -881,24 +938,103 @@ function showCorrectionTooltip(x, y, correction) {
   position: absolute;
   background: white;
   border: 1px solid #ccc;
-  padding: 8px;
-  border-radius: 4px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  padding: 0;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
   z-index: 1000;
+  min-width: 220px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
-.correction-tooltip button {
-  display: block;
-  margin: 4px 0;
-  padding: 4px 8px;
+/* Current applied correction */
+.correction-current {
+  padding: 10px 12px;
+  background: #f0f9ff;
+  border-bottom: 1px solid #e0e0e0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.correction-current strong {
+  flex: 1;
+  color: #1976d2;
+}
+
+.correction-current .confidence {
+  color: #1976d2;
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.correction-current .checkmark {
+  color: #4CAF50;
+  font-size: 16px;
+}
+
+/* Divider */
+.correction-tooltip hr {
+  margin: 0;
   border: none;
-  background: #f5f5f5;
-  cursor: pointer;
-  border-radius: 3px;
+  border-top: 1px solid #e0e0e0;
 }
 
-.correction-tooltip button:hover {
-  background: #e0e0e0;
+/* Option buttons */
+.correction-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  background: white;
+  cursor: pointer;
+  text-align: left;
+  font-size: 14px;
+  transition: background 0.2s;
+}
+
+.correction-option:first-of-type {
+  border-radius: 0;
+}
+
+.correction-option:last-of-type {
+  border-radius: 0 0 6px 6px;
+}
+
+.correction-option:hover {
+  background: #f5f5f5;
+}
+
+.correction-option .icon {
+  color: #666;
+  font-size: 16px;
+  width: 20px;
+  text-align: center;
+}
+
+.correction-option .text {
+  flex: 1;
+  color: #333;
+}
+
+.correction-option .label {
+  color: #999;
+  font-size: 12px;
+  font-style: italic;
+}
+
+.correction-option .confidence {
+  color: #666;
+  font-weight: 600;
+  font-size: 12px;
+  min-width: 35px;
+  text-align: right;
+}
+
+.correction-option .confidence.dim {
+  color: #ccc;
 }
 ```
 
