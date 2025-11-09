@@ -1044,23 +1044,90 @@ function showCorrectionTooltip(x, y, correction) {
 
 ### 1. **Debounce Corrections**
 
-Don't correct while user is actively typing:
+**Critical UX principle:** Don't correct while user is actively typing!
+
+Apply corrections only when:
+- **5 seconds** have passed since the word was completed, OR
+- User has typed **3+ more characters** (moved on to next word/sentence)
+
+This prevents jarring mid-typing corrections and feels natural.
 
 ```python
-last_change_time = 0
-DEBOUNCE_MS = 1000  # Wait 1 second after last keystroke
+# Track word positions that need checking
+pending_corrections = {}  # {position: (word, timestamp)}
+DEBOUNCE_DELAY = 5.0  # 5 seconds
+CURSOR_DISTANCE = 3   # 3+ characters away
 
 async def handle_change(change):
-    global last_change_time
+    """Handle each change event with smart debouncing"""
 
-    last_change_time = time.time()
+    # Word boundary - user finished typing a word
+    if change['operation'] == 'insert' and is_word_boundary(change['text']):
+        # Get the word that was just completed
+        word_position = change['index'] - 1
+        context = await get_context(word_position)
+        word = extract_last_word(context)
 
-    # Wait for user to pause
-    await asyncio.sleep(1.0)
+        if needs_correction(word):
+            # Schedule for checking (don't apply immediately!)
+            pending_corrections[word_position] = {
+                'word': word,
+                'timestamp': time.time(),
+                'checked': False
+            }
 
-    # Only proceed if no new changes
-    if time.time() - last_change_time >= 1.0:
-        analyze_and_correct(change)
+    # Check pending corrections (run periodically)
+    await check_pending_corrections(change['index'])
+
+async def check_pending_corrections(current_cursor):
+    """Apply corrections when conditions are met"""
+
+    now = time.time()
+
+    for position, pending in list(pending_corrections.items()):
+        if pending['checked']:
+            continue
+
+        # Condition 1: 5 seconds have passed
+        time_elapsed = now - pending['timestamp']
+
+        # Condition 2: User has moved 3+ characters away
+        cursor_distance = abs(current_cursor - position)
+
+        if time_elapsed >= DEBOUNCE_DELAY or cursor_distance >= CURSOR_DISTANCE:
+            # Safe to apply correction now
+            await apply_correction(position, pending['word'])
+            pending['checked'] = True
+
+            # Clean up old entries
+            if time_elapsed > 60:  # Remove after 1 minute
+                del pending_corrections[position]
+
+def is_word_boundary(char):
+    return char in [' ', '.', ',', '\n', '!', '?', ';', ':', '-']
+```
+
+**Example timeline:**
+
+```
+00:00  User types: "similarley"
+00:00  User types: " " (space - word complete)
+       → LLM detects typo, schedules correction
+00:00  User types: "to"
+       → Cursor now 3 chars away from "similarley"
+       → Correction applied! "similarley" → "similarly"
+00:01  User continues typing normally
+```
+
+Or:
+
+```
+00:00  User types: "similarley"
+00:00  User types: " " (space - word complete)
+       → LLM detects typo, schedules correction
+00:00  User pauses to think...
+00:05  5 seconds elapsed, no more typing
+       → Correction applied! "similarley" → "similarly"
 ```
 
 ### 2. **Single-Word Analysis**
