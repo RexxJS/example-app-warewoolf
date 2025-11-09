@@ -13,6 +13,8 @@ const {
 } = require('./components/controllers/utils');
 const fileRequestedOnOpen = ipcRenderer.sendSync('get-file-requested-on-open');
 const { showBattery } = require('./components/views/battery_display');
+const { setupRexxJSControl } = require('./components/controllers/woolf-rexx-handler');
+const { setupControlBus } = require('./components/controllers/woolf-controlbus');
 
 var editorQuill = new Quill('#editor-container', {
   modules: {
@@ -44,6 +46,68 @@ function initialize(){
   setUpQuills();
   applyUserSettings();
   loadInitialProject();
+  setupRexxJS();
+}
+
+function setupRexxJS(){
+  // Set up RexxJS control interface
+  const context = {
+    editorQuill,
+    notesQuill,
+    project,
+    userSettings,
+
+    // Chapter operations
+    onAddChapter: (title) => {
+      addNewChapter();
+      if (title && title !== 'New Chapter') {
+        const lastIndex = project.chapters.length - 1;
+        project.chapters[lastIndex].title = title;
+        updateFileList();
+      }
+    },
+    onDeleteChapter: (index) => {
+      if (index >= 0 && index < project.chapters.length) {
+        deleteChapter(index);
+      }
+    },
+    onGoToChapter: (index) => {
+      displayChapterByIndex(index);
+    },
+    onUpdateChapterList: () => {
+      updateFileList();
+    },
+
+    // File operations
+    onSave: () => {
+      saveProject();
+    },
+    onOpen: (path) => {
+      if (fs.existsSync(path)) {
+        setProject(path);
+        userSettings.lastProject = path;
+        userSettings.save();
+      }
+    },
+    onNewProject: (title) => {
+      createNewProject();
+    },
+
+    // Export operations
+    onExportDocx: (output) => {
+      const { deltaToDocx } = require('./components/controllers/delta-to-docx');
+      deltaToDocx(project, output);
+    },
+    onCompile: (params) => {
+      const showCompile = require('./components/views/compile_display');
+      showCompile(project);
+    }
+  };
+
+  const handler = setupRexxJSControl(context);
+  setupControlBus(window.ADDRESS_WOOLF);
+
+  console.log('[WareWoolf] RexxJS integration ready');
 }
 
 function loadInitialProject(){

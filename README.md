@@ -23,6 +23,13 @@ For a more in-depth overview of WareWoolf, please see [the Wiki](https://github.
 
 ## Features
 
+* **NEW: RexxJS Scripting Support** - Automate tasks with RexxJS scripts via the ADDRESS WOOLF interface
+  * Control document content programmatically
+  * Batch chapter creation and management
+  * Automated find & replace operations
+  * Generate statistics and reports
+  * See `WOOLF_COMMANDS.md` for complete command reference
+  * Example scripts in `examples/rexxjs-scripts/`
 * All-keyboard navigation designed for pleasant use without a mouse.
 * Distraction-free writing: Each of the three panels can be toggled on/off at the press of a button. Write with only your manuscript visible.
 * Plain text import/conversion tools
@@ -62,6 +69,52 @@ This app was built using Electron Forge. To run it from source...
 * Run "npm install" in the WareWoolf source code directory to install the dependencies using the Node Package Manager.
 * Then you can simply use command "npm start" to run the program.
 * To make a binary, "npm run make". See the [Electron Forge documentation](https://www.electronforge.io/) for instructions on how to alter the package.json file for making binaries for different systems, but basically in the "makers" property of the "forge" object in the package.json file, there is an array of different makers for producing different binaries. The "@electron-forge/maker-squirrel" is for producing a Windows binary, the maker-deb for Linux, and the maker-dmg for MacOS. To produce them, run "npm run make" and it should use the appropriate one for your system. You will find the binary in the "out" folder.  
+
+## RexxJS Scripting
+
+WareWoolf now supports automation via RexxJS scripting through the `ADDRESS WOOLF` interface. This allows you to:
+
+- **Automate repetitive tasks** - Batch create chapters, find & replace across documents
+- **Generate reports** - Word count statistics, chapter analysis, outlier detection
+- **Control documents programmatically** - Insert text, format content, manage chapters
+- **Build custom workflows** - Combine commands to create powerful automation
+
+### Quick Example
+
+```rexx
+/* Get word count for all chapters */
+ADDRESS WOOLF "list-chapters"
+chapters = rc
+
+do i = 0 to chapters.length - 1
+  ADDRESS WOOLF "get-chapter-word-count number=" || i
+  say rc.title ":" rc.words "words"
+end
+```
+
+### Getting Started
+
+1. **View examples** - Check `examples/rexxjs-scripts/` for ready-to-use scripts
+2. **Read documentation** - See `WOOLF_COMMANDS.md` for complete command reference
+3. **Try the demo** - Open `woolf-controlbus-demo.html` for an interactive playground
+
+### Available Commands
+
+- Document operations: `get-content`, `set-content`, `append`, `insert`
+- Chapter management: `list-chapters`, `add-chapter`, `delete-chapter`, `get-chapter`
+- Search & Replace: `find`, `replace`
+- Statistics: `get-word-count`, `get-chapter-word-count`
+- File operations: `save-document`, `open-document`, `export-docx`
+- And more! See `WOOLF_COMMANDS.md` for the complete list
+
+### Example Scripts
+
+The `examples/rexxjs-scripts/` directory includes:
+- **simple-word-count.rexx** - Basic word count statistics
+- **word-count-report.rexx** - Detailed chapter-by-chapter analysis
+- **batch-chapter-creator.rexx** - Create multiple chapters from an outline
+- **find-and-replace.rexx** - Automated text replacement
+- **chapter-statistics.rexx** - Advanced statistical analysis with outlier detection
 
 ## Documentation
 
