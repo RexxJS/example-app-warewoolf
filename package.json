@@ -5,7 +5,10 @@
   "description": "A simple novel writing system designed to be usable without a mouse.",
   "main": "src/index.js",
   "scripts": {
+    "download-rexxjs": "mkdir -p src/lib && curl -L -o src/lib/rexxjs.bundle.js https://repl.rexxjs.org/repl/dist/rexxjs.bundle.js && echo '✓ RexxJS bundle downloaded'",
+    "prestart": "npm run download-rexxjs",
     "start": "electron-forge start",
+    "prepackage": "npm run download-rexxjs",
     "package": "electron-forge package",
     "make": "electron-forge make",
     "publish": "electron-forge publish",

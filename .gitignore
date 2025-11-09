@@ -5,3 +5,6 @@ dist/
 error_log.txt
 .vscode/settings.json
 .DS_store
+
+# Downloaded at build time
+src/lib/rexxjs.bundle.js
