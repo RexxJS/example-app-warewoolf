@@ -3,13 +3,19 @@
  *
  * Provides ADDRESS WOOLF commands for document manipulation via RexxJS
  * Based on the RexxJS control bus architecture
+ * Enhanced with Operational Transform support for collaborative editing
  */
+
+const { WoolfOTDocument } = require('./woolf-ot-document');
 
 class WoolfRexxHandler {
   constructor(context) {
     this.context = context;
     this.debugLog = [];
     this.maxLogEntries = 100;
+
+    // Initialize OT document wrapper
+    this.otDoc = new WoolfOTDocument(context.editorQuill, context.documentId || 'default');
   }
 
   /**
@@ -91,6 +97,94 @@ class WoolfRexxHandler {
           return this.getDebugLog();
         case 'clear-debug-log':
           return this.clearDebugLog();
+
+        // ========== OT Version Control ==========
+        case 'get-version':
+          return await this.getVersion(params);
+        case 'get-changes-since':
+          return await this.getChangesSince(params);
+        case 'subscribe-changes':
+          return await this.subscribeChanges(params);
+        case 'unsubscribe-changes':
+          return await this.unsubscribeChanges(params);
+
+        // ========== OT Cursor & Selection ==========
+        case 'get-cursor':
+          return await this.getCursor(params);
+        case 'set-cursor':
+          return await this.setCursor(params);
+        case 'get-selection':
+          return await this.getSelection(params);
+        case 'set-selection':
+          return await this.setSelection(params);
+        case 'get-all-cursors':
+          return await this.getAllCursors(params);
+
+        // ========== OT Operations ==========
+        case 'insert-at':
+          return await this.insertAt(params);
+        case 'delete-range':
+          return await this.deleteRange(params);
+        case 'replace-range':
+          return await this.replaceRange(params);
+        case 'apply-delta':
+          return await this.applyDelta(params);
+
+        // ========== Collaboration ==========
+        case 'announce-presence':
+          return await this.announcePresence(params);
+        case 'get-active-users':
+          return await this.getActiveUsers(params);
+        case 'lock-range':
+          return await this.lockRange(params);
+        case 'unlock-range':
+          return await this.unlockRange(params);
+
+        // ========== Document Analysis ==========
+        case 'get-structure':
+          return await this.getStructure(params);
+        case 'get-range-text':
+          return await this.getRangeText(params);
+        case 'get-context-around':
+          return await this.getContextAround(params);
+        case 'find-pattern':
+          return await this.findPattern(params);
+        case 'get-metadata':
+          return await this.getMetadata(params);
+
+        // ========== LLM Suggestions ==========
+        case 'suggest-edit':
+          return await this.suggestEdit(params);
+        case 'accept-suggestion':
+          return await this.acceptSuggestion(params);
+        case 'reject-suggestion':
+          return await this.rejectSuggestion(params);
+        case 'get-suggestions':
+          return await this.getSuggestions(params);
+        case 'clear-suggestions':
+          return await this.clearSuggestions(params);
+
+        // ========== Annotations ==========
+        case 'annotate-range':
+          return await this.annotateRange(params);
+        case 'get-annotations':
+          return await this.getAnnotations(params);
+        case 'delete-annotation':
+          return await this.deleteAnnotation(params);
+
+        // ========== Transactions ==========
+        case 'begin-transaction':
+          return await this.beginTransaction(params);
+        case 'commit-transaction':
+          return await this.commitTransaction(params);
+        case 'rollback-transaction':
+          return await this.rollbackTransaction(params);
+
+        // ========== History ==========
+        case 'get-history':
+          return await this.getHistory(params);
+        case 'revert-to-version':
+          return await this.revertToVersion(params);
 
         default:
           throw new Error(`Unknown command: ${command}`);
@@ -384,6 +478,284 @@ class WoolfRexxHandler {
   clearDebugLog() {
     this.debugLog = [];
     return { success: true };
+  }
+
+  // ========== OT Version Control Methods ==========
+
+  async getVersion(params) {
+    return this.otDoc.getVersion();
+  }
+
+  async getChangesSince(params) {
+    const sinceVersion = parseInt(params.version || params.since || 0);
+    return this.otDoc.getChangesSince(sinceVersion);
+  }
+
+  async subscribeChanges(params) {
+    const callback = params.callback || ((change) => {
+      console.log('[ChangeSubscription]', change);
+    });
+
+    const subscription = this.otDoc.subscribe(callback);
+    return {
+      success: true,
+      subscriberId: subscription.subscriberId,
+      message: 'Subscribed to document changes'
+    };
+  }
+
+  async unsubscribeChanges(params) {
+    const subscriberId = parseInt(params.subscriberId || params.id);
+    const success = this.otDoc.unsubscribe(subscriberId);
+    return { success };
+  }
+
+  // ========== OT Cursor & Selection Methods ==========
+
+  async getCursor(params) {
+    const userId = params.userId || params.user || 'system';
+    const cursor = this.otDoc.getCursor(userId);
+    return cursor || { userId, index: 0, length: 0 };
+  }
+
+  async setCursor(params) {
+    const userId = params.userId || params.user || 'system';
+    const index = parseInt(params.index || params.position || 0);
+    return this.otDoc.setCursor(userId, index);
+  }
+
+  async getSelection(params) {
+    const userId = params.userId || params.user || 'system';
+    const selection = this.otDoc.getSelection(userId);
+    return selection || { userId, index: 0, length: 0 };
+  }
+
+  async setSelection(params) {
+    const userId = params.userId || params.user || 'system';
+    const index = parseInt(params.index || params.position || 0);
+    const length = parseInt(params.length || 0);
+    return this.otDoc.setSelection(userId, index, length);
+  }
+
+  async getAllCursors(params) {
+    return this.otDoc.getAllCursors();
+  }
+
+  // ========== OT Operations Methods ==========
+
+  async insertAt(params) {
+    const userId = params.userId || params.user || 'system';
+    const index = parseInt(params.index || params.position || 0);
+    const text = params.text || params.content || '';
+    const attributes = params.attributes || {};
+
+    return this.otDoc.insertAt(index, text, userId, attributes);
+  }
+
+  async deleteRange(params) {
+    const userId = params.userId || params.user || 'system';
+    const index = parseInt(params.index || params.position || params.start || 0);
+    const length = parseInt(params.length || 1);
+
+    return this.otDoc.deleteRange(index, length, userId);
+  }
+
+  async replaceRange(params) {
+    const userId = params.userId || params.user || 'system';
+    const index = parseInt(params.index || params.position || params.start || 0);
+    const length = parseInt(params.length || 0);
+    const text = params.text || params.newText || '';
+    const attributes = params.attributes || {};
+
+    return this.otDoc.replaceRange(index, length, text, userId, attributes);
+  }
+
+  async applyDelta(params) {
+    const userId = params.userId || params.user || 'system';
+    const delta = params.delta;
+
+    if (!delta) {
+      throw new Error('Delta parameter required');
+    }
+
+    return this.otDoc.applyDelta(delta, userId);
+  }
+
+  // ========== Collaboration Methods ==========
+
+  async announcePresence(params) {
+    const userId = params.userId || params.user || 'system';
+    const userName = params.userName || params.name || userId;
+    const userType = params.userType || params.type || 'human';
+
+    return this.otDoc.announcePresence(userId, userName, userType);
+  }
+
+  async getActiveUsers(params) {
+    const threshold = parseInt(params.threshold || 60000);
+    return this.otDoc.getActiveUsers(threshold);
+  }
+
+  async lockRange(params) {
+    const userId = params.userId || params.user || 'system';
+    const index = parseInt(params.index || params.position || params.start || 0);
+    const length = parseInt(params.length || 1);
+    const duration = parseInt(params.duration || 60000);
+
+    return this.otDoc.lockRange(userId, index, length, duration);
+  }
+
+  async unlockRange(params) {
+    const userId = params.userId || params.user || 'system';
+    const lockId = parseInt(params.lockId || params.id);
+
+    return this.otDoc.unlockRange(lockId, userId);
+  }
+
+  // ========== Document Analysis Methods ==========
+
+  async getStructure(params) {
+    return this.otDoc.getStructure();
+  }
+
+  async getRangeText(params) {
+    const index = parseInt(params.index || params.position || params.start || 0);
+    const length = parseInt(params.length || 1);
+
+    return {
+      index,
+      length,
+      text: this.otDoc.getRangeText(index, length)
+    };
+  }
+
+  async getContextAround(params) {
+    const index = parseInt(params.index || params.position || 0);
+    const contextSize = parseInt(params.contextSize || params.size || 100);
+
+    return this.otDoc.getContextAround(index, contextSize);
+  }
+
+  async findPattern(params) {
+    const pattern = params.pattern || params.regex;
+    const flags = params.flags || 'g';
+
+    if (!pattern) {
+      throw new Error('Pattern parameter required');
+    }
+
+    const options = { flags };
+    return this.otDoc.findPattern(pattern, options);
+  }
+
+  async getMetadata(params) {
+    return this.otDoc.getMetadata();
+  }
+
+  // ========== LLM Suggestion Methods ==========
+
+  async suggestEdit(params) {
+    const userId = params.userId || params.user || 'llm-assistant';
+    const index = parseInt(params.index || params.position || params.start || 0);
+    const length = parseInt(params.length || 0);
+    const newText = params.newText || params.text || '';
+    const metadata = params.metadata || {};
+
+    return this.otDoc.suggestEdit(userId, index, length, newText, metadata);
+  }
+
+  async acceptSuggestion(params) {
+    const suggestionId = parseInt(params.suggestionId || params.id);
+    const userId = params.userId || params.user || 'system';
+
+    if (!suggestionId) {
+      throw new Error('Suggestion ID required');
+    }
+
+    return this.otDoc.acceptSuggestion(suggestionId, userId);
+  }
+
+  async rejectSuggestion(params) {
+    const suggestionId = parseInt(params.suggestionId || params.id);
+    const userId = params.userId || params.user || 'system';
+    const reason = params.reason || '';
+
+    if (!suggestionId) {
+      throw new Error('Suggestion ID required');
+    }
+
+    return this.otDoc.rejectSuggestion(suggestionId, userId, reason);
+  }
+
+  async getSuggestions(params) {
+    const status = params.status || null;
+    return this.otDoc.getSuggestions(status);
+  }
+
+  async clearSuggestions(params) {
+    const status = params.status || 'all';
+    this.otDoc.clearSuggestions(status);
+    return { success: true, status };
+  }
+
+  // ========== Annotation Methods ==========
+
+  async annotateRange(params) {
+    const userId = params.userId || params.user || 'system';
+    const index = parseInt(params.index || params.position || params.start || 0);
+    const length = parseInt(params.length || 1);
+    const text = params.text || params.comment || '';
+    const type = params.type || 'comment';
+
+    return this.otDoc.annotate(userId, index, length, text, type);
+  }
+
+  async getAnnotations(params) {
+    const type = params.type || null;
+    return this.otDoc.getAnnotations(type);
+  }
+
+  async deleteAnnotation(params) {
+    const annotationId = parseInt(params.annotationId || params.id);
+
+    if (!annotationId) {
+      throw new Error('Annotation ID required');
+    }
+
+    const success = this.otDoc.deleteAnnotation(annotationId);
+    return { success };
+  }
+
+  // ========== Transaction Methods ==========
+
+  async beginTransaction(params) {
+    const userId = params.userId || params.user || 'system';
+    return this.otDoc.beginTransaction(userId);
+  }
+
+  async commitTransaction(params) {
+    return this.otDoc.commitTransaction();
+  }
+
+  async rollbackTransaction(params) {
+    return this.otDoc.rollbackTransaction();
+  }
+
+  // ========== History Methods ==========
+
+  async getHistory(params) {
+    const limit = parseInt(params.limit || 50);
+    return this.otDoc.getHistory(limit);
+  }
+
+  async revertToVersion(params) {
+    const version = parseInt(params.version);
+
+    if (isNaN(version)) {
+      throw new Error('Version parameter required');
+    }
+
+    return this.otDoc.revertToVersion(version);
   }
 
   // ========== Utilities ==========

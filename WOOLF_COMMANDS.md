@@ -389,6 +389,565 @@ say "Log cleared"
 
 ---
 
+### Collaborative Editing & OT Operations
+
+WareWoolf supports Operational Transform (OT) features for collaborative editing between humans and LLMs.
+
+#### Version Control
+
+##### `get-version`
+Get the current document version number.
+
+**Returns:** `{ version: <number> }`
+
+**Example:**
+```rexx
+ADDRESS WOOLF "get-version"
+say "Document version:" rc.version
+```
+
+##### `get-changes-since`
+Get all changes since a specific version.
+
+**Parameters:**
+- `since`: Version number to get changes since
+
+**Returns:** `{ changes: [<array>], fromVersion: <number>, toVersion: <number> }`
+
+**Example:**
+```rexx
+ADDRESS WOOLF "get-changes-since since=5"
+changes = rc
+say "Found" changes.changes.length "changes"
+```
+
+##### `subscribe-changes`
+Subscribe to document change notifications.
+
+**Parameters:**
+- `user-id`: User identifier for the subscription
+
+**Returns:** `{ subscriptionId: <number>, subscribed: true }`
+
+**Example:**
+```rexx
+ADDRESS WOOLF "subscribe-changes user-id=alice"
+say "Subscription ID:" rc.subscriptionId
+```
+
+##### `unsubscribe-changes`
+Unsubscribe from change notifications.
+
+**Parameters:**
+- `subscription-id`: The subscription ID to cancel
+
+**Returns:** `{ unsubscribed: true }`
+
+**Example:**
+```rexx
+ADDRESS WOOLF "unsubscribe-changes subscription-id=1"
+say "Unsubscribed"
+```
+
+#### Cursor and Selection Tracking
+
+##### `get-cursor`
+Get cursor position for a specific user.
+
+**Parameters:**
+- `user-id`: User identifier
+
+**Returns:** `{ index: <number>, length: <number>, timestamp: <number> }`
+
+**Example:**
+```rexx
+ADDRESS WOOLF "get-cursor user-id=alice"
+say "Cursor at position:" rc.index
+```
+
+##### `set-cursor`
+Update cursor position for a user.
+
+**Parameters:**
+- `user-id`: User identifier
+- `index`: Cursor position (character index)
+
+**Returns:** `{ updated: true, cursor: <object> }`
+
+**Example:**
+```rexx
+ADDRESS WOOLF "set-cursor user-id=alice index=100"
+say "Cursor updated"
+```
+
+##### `get-selection`
+Get selection range for a specific user.
+
+**Parameters:**
+- `user-id`: User identifier
+
+**Returns:** `{ index: <number>, length: <number>, timestamp: <number> }`
+
+**Example:**
+```rexx
+ADDRESS WOOLF "get-selection user-id=alice"
+say "Selection:" rc.index "length" rc.length
+```
+
+##### `set-selection`
+Update selection range for a user.
+
+**Parameters:**
+- `user-id`: User identifier
+- `index`: Selection start position
+- `length`: Selection length
+
+**Returns:** `{ updated: true, selection: <object> }`
+
+**Example:**
+```rexx
+ADDRESS WOOLF "set-selection user-id=alice index=50 length=100"
+say "Selection updated"
+```
+
+##### `get-all-cursors`
+Get cursor positions for all active users.
+
+**Returns:** `{ cursors: <map of user cursors> }`
+
+**Example:**
+```rexx
+ADDRESS WOOLF "get-all-cursors"
+say "Active cursors:" rc.cursors.size
+```
+
+##### `get-all-selections`
+Get selection ranges for all active users.
+
+**Returns:** `{ selections: <map of user selections> }`
+
+**Example:**
+```rexx
+ADDRESS WOOLF "get-all-selections"
+say "Active selections:" rc.selections.size
+```
+
+#### OT Operations
+
+##### `insert-at`
+Insert text at a specific position with OT tracking.
+
+**Parameters:**
+- `index`: Position to insert at
+- `text`: Text to insert
+- `user-id`: User making the change
+- `bold`, `italic`, `underline` (optional): Formatting attributes
+
+**Returns:** `{ version: <number>, operation: "insert", index: <number>, text: <string> }`
+
+**Example:**
+```rexx
+ADDRESS WOOLF "insert-at index=10 text=Hello user-id=alice bold=true"
+say "Inserted at version" rc.version
+```
+
+##### `delete-range`
+Delete a range of text with OT tracking.
+
+**Parameters:**
+- `index`: Start position
+- `length`: Number of characters to delete
+- `user-id`: User making the change
+
+**Returns:** `{ version: <number>, operation: "delete", index: <number>, length: <number> }`
+
+**Example:**
+```rexx
+ADDRESS WOOLF "delete-range index=10 length=20 user-id=alice"
+say "Deleted" rc.length "characters"
+```
+
+##### `replace-range`
+Replace a range of text with new text.
+
+**Parameters:**
+- `index`: Start position
+- `length`: Number of characters to replace
+- `text`: New text
+- `user-id`: User making the change
+- `bold`, `italic`, `underline` (optional): Formatting attributes
+
+**Returns:** `{ version: <number>, operation: "replace", oldText: <string>, newText: <string> }`
+
+**Example:**
+```rexx
+ADDRESS WOOLF "replace-range index=10 length=5 text=world user-id=alice"
+say "Replaced '" || rc.oldText || "' with '" || rc.newText || "'"
+```
+
+##### `apply-delta`
+Apply a Quill delta to the document.
+
+**Parameters:**
+- `delta`: JSON-encoded delta object
+- `user-id`: User making the change
+
+**Returns:** `{ applied: true, version: <number> }`
+
+**Example:**
+```rexx
+delta = '{"ops":[{"retain":5},{"insert":"Hello"}]}'
+ADDRESS WOOLF "apply-delta delta=" || delta || " user-id=alice"
+say "Delta applied at version" rc.version
+```
+
+#### Collaboration
+
+##### `announce-presence`
+Register a user's presence in the document.
+
+**Parameters:**
+- `user-id`: Unique user identifier
+- `user-name`: Display name
+- `user-type`: "human" or "llm"
+
+**Returns:** `{ userId: <string>, userName: <string>, userType: <string>, documentId: <string>, lastSeen: <timestamp> }`
+
+**Example:**
+```rexx
+ADDRESS WOOLF "announce-presence user-id=claude user-name=Claude user-type=llm"
+say "LLM agent registered:" rc.userName
+```
+
+##### `get-active-users`
+Get list of all active users.
+
+**Returns:** `{ users: [<array>], count: <number> }`
+
+**Example:**
+```rexx
+ADDRESS WOOLF "get-active-users"
+users = rc
+say "Active users:" users.count
+do i = 0 to users.users.length - 1
+  user = users.users[i]
+  say "  -" user.userName "(" || user.userType || ")"
+end
+```
+
+##### `lock-range`
+Lock a range to prevent editing by other users.
+
+**Parameters:**
+- `user-id`: User who owns the lock
+- `index`: Start position
+- `length`: Range length
+- `duration` (optional): Lock duration in milliseconds (default: 300000 = 5 minutes)
+
+**Returns:** `{ lockId: <number>, userId: <string>, index: <number>, length: <number>, active: true, duration: <number> }`
+
+**Example:**
+```rexx
+ADDRESS WOOLF "lock-range user-id=alice index=100 length=50 duration=60000"
+say "Range locked (ID:" || rc.lockId || ")"
+```
+
+##### `unlock-range`
+Release a range lock.
+
+**Parameters:**
+- `lock-id`: The lock ID to release
+- `user-id`: User who owns the lock
+
+**Returns:** `{ unlocked: true }`
+
+**Example:**
+```rexx
+ADDRESS WOOLF "unlock-range lock-id=1 user-id=alice"
+say "Range unlocked"
+```
+
+#### Document Analysis
+
+##### `get-structure`
+Analyze document structure.
+
+**Returns:** `{ chapters: <number>, paragraphs: <number>, headings: <number>, lists: <number> }`
+
+**Example:**
+```rexx
+ADDRESS WOOLF "get-structure"
+say "Document has" rc.chapters "chapters and" rc.paragraphs "paragraphs"
+```
+
+##### `get-range-text`
+Get text from a specific range.
+
+**Parameters:**
+- `index`: Start position
+- `length`: Range length
+
+**Returns:** `{ text: <string>, range: { index: <number>, length: <number> } }`
+
+**Example:**
+```rexx
+ADDRESS WOOLF "get-range-text index=10 length=50"
+say "Text:" rc.text
+```
+
+##### `get-context-around`
+Get text context around a position.
+
+**Parameters:**
+- `index`: Position to get context for
+- `context-size` (optional): Number of characters before/after (default: 50)
+
+**Returns:** `{ before: <string>, at: <string>, after: <string>, index: <number> }`
+
+**Example:**
+```rexx
+ADDRESS WOOLF "get-context-around index=100 context-size=20"
+say "Context: ..." || rc.before || " [" || rc.at || "] " || rc.after || "..."
+```
+
+##### `find-pattern`
+Search document using regular expressions.
+
+**Parameters:**
+- `pattern`: Regular expression pattern
+- `case-insensitive` (optional): "true" or "false" (default: false)
+
+**Returns:** `{ matches: [<array>], count: <number> }`
+
+**Example:**
+```rexx
+ADDRESS WOOLF "find-pattern pattern=chapter\\s+\\d+ case-insensitive=true"
+say "Found" rc.count "chapter markers"
+```
+
+##### `get-metadata`
+Get document metadata.
+
+**Returns:** `{ documentId: <string>, version: <number>, length: <number>, activeUsers: <number> }`
+
+**Example:**
+```rexx
+ADDRESS WOOLF "get-metadata"
+say "Document ID:" rc.documentId
+say "Version:" rc.version
+```
+
+#### LLM Suggestion System
+
+##### `suggest-edit`
+LLM suggests an edit to the document.
+
+**Parameters:**
+- `user-id`: LLM agent identifier
+- `index`: Position to edit
+- `length`: Length of text to replace
+- `new-text`: Suggested replacement text
+- `confidence` (optional): Confidence score 0-1
+- `reasoning` (optional): Explanation for suggestion
+
+**Returns:** `{ suggestionId: <number>, userId: <string>, range: <object>, newText: <string>, oldText: <string>, status: "pending", metadata: <object> }`
+
+**Example:**
+```rexx
+ADDRESS WOOLF "suggest-edit user-id=claude index=10 length=5" ,
+  "new-text=improved confidence=0.92 reasoning=Better clarity"
+suggestion = rc
+say "Suggestion ID:" suggestion.suggestionId
+```
+
+##### `accept-suggestion`
+Accept and apply an LLM suggestion.
+
+**Parameters:**
+- `suggestion-id`: The suggestion to accept
+- `user-id`: User accepting the suggestion
+
+**Returns:** `{ suggestionId: <number>, status: "accepted", acceptedBy: <string>, appliedAtVersion: <number> }`
+
+**Example:**
+```rexx
+ADDRESS WOOLF "accept-suggestion suggestion-id=1 user-id=alice"
+say "Suggestion accepted and applied"
+```
+
+##### `reject-suggestion`
+Reject an LLM suggestion without applying it.
+
+**Parameters:**
+- `suggestion-id`: The suggestion to reject
+- `user-id`: User rejecting the suggestion
+- `reason` (optional): Reason for rejection
+
+**Returns:** `{ suggestionId: <number>, status: "rejected", rejectedBy: <string>, rejectionReason: <string> }`
+
+**Example:**
+```rexx
+ADDRESS WOOLF "reject-suggestion suggestion-id=1 user-id=alice reason=Not needed"
+say "Suggestion rejected"
+```
+
+##### `get-suggestions`
+Get all suggestions, optionally filtered.
+
+**Parameters:**
+- `status` (optional): Filter by "pending", "accepted", or "rejected"
+
+**Returns:** `{ suggestions: [<array>], count: <number> }`
+
+**Example:**
+```rexx
+ADDRESS WOOLF "get-suggestions status=pending"
+say "Pending suggestions:" rc.count
+```
+
+##### `clear-suggestions`
+Remove suggestions, optionally filtered.
+
+**Parameters:**
+- `status` (optional): Clear only specific status ("pending", "accepted", "rejected")
+
+**Returns:** `{ cleared: <number> }`
+
+**Example:**
+```rexx
+ADDRESS WOOLF "clear-suggestions status=rejected"
+say "Cleared" rc.cleared "rejected suggestions"
+```
+
+#### Annotations
+
+##### `annotate-range`
+Add an annotation/comment to a range.
+
+**Parameters:**
+- `user-id`: User adding the annotation
+- `index`: Start position
+- `length`: Range length
+- `text`: Annotation text
+- `type` (optional): "comment", "highlight", "suggestion" (default: "comment")
+
+**Returns:** `{ annotationId: <number>, userId: <string>, range: <object>, text: <string>, type: <string>, timestamp: <number> }`
+
+**Example:**
+```rexx
+ADDRESS WOOLF "annotate-range user-id=claude index=50 length=20" ,
+  "text=Consider rephrasing type=comment"
+say "Annotation added (ID:" || rc.annotationId || ")"
+```
+
+##### `get-annotations`
+Get annotations, optionally filtered.
+
+**Parameters:**
+- `type` (optional): Filter by annotation type
+- `user-id` (optional): Filter by user
+
+**Returns:** `{ annotations: [<array>], count: <number> }`
+
+**Example:**
+```rexx
+ADDRESS WOOLF "get-annotations type=comment"
+say "Found" rc.count "comments"
+```
+
+##### `delete-annotation`
+Remove an annotation.
+
+**Parameters:**
+- `annotation-id`: The annotation to delete
+
+**Returns:** `{ deleted: true }`
+
+**Example:**
+```rexx
+ADDRESS WOOLF "delete-annotation annotation-id=1"
+say "Annotation deleted"
+```
+
+#### Transactions
+
+##### `begin-transaction`
+Start a transaction for atomic multi-operation edits.
+
+**Parameters:**
+- `user-id`: User starting the transaction
+
+**Returns:** `{ userId: <string>, operations: [], startedAt: <timestamp> }`
+
+**Example:**
+```rexx
+ADDRESS WOOLF "begin-transaction user-id=alice"
+say "Transaction started"
+```
+
+##### `commit-transaction`
+Commit all operations in the current transaction.
+
+**Returns:** `{ committed: true, operationCount: <number>, version: <number> }`
+
+**Example:**
+```rexx
+ADDRESS WOOLF "begin-transaction user-id=alice"
+ADDRESS WOOLF "insert-at index=10 text=Hello user-id=alice"
+ADDRESS WOOLF "insert-at index=20 text=World user-id=alice"
+ADDRESS WOOLF "commit-transaction"
+say "Committed" rc.operationCount "operations as single version"
+```
+
+##### `rollback-transaction`
+Cancel the current transaction without applying changes.
+
+**Returns:** `{ rolledBack: true, operationCount: <number> }`
+
+**Example:**
+```rexx
+ADDRESS WOOLF "begin-transaction user-id=alice"
+ADDRESS WOOLF "insert-at index=10 text=Test user-id=alice"
+ADDRESS WOOLF "rollback-transaction"
+say "Transaction cancelled - no changes applied"
+```
+
+#### History
+
+##### `get-history`
+Get document change history.
+
+**Parameters:**
+- `limit` (optional): Maximum number of changes to return
+
+**Returns:** `{ history: [<array>], totalChanges: <number> }`
+
+**Example:**
+```rexx
+ADDRESS WOOLF "get-history limit=10"
+say "Last 10 changes:"
+do i = 0 to rc.history.length - 1
+  change = rc.history[i]
+  say "  v" || change.version || ":" change.operation "by" change.userId
+end
+```
+
+##### `revert-to-version`
+Revert document to a previous version.
+
+**Parameters:**
+- `version`: Version number to revert to
+
+**Returns:** `{ reverted: true, fromVersion: <number>, toVersion: <number> }`
+
+**Example:**
+```rexx
+ADDRESS WOOLF "revert-to-version version=10"
+say "Reverted to version" rc.toVersion
+```
+
+---
+
 ## Complete Examples
 
 ### Example 1: Batch Chapter Creation
