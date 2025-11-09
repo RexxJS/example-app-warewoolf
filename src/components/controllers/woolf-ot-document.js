@@ -24,6 +24,10 @@ class WoolfOTDocument {
     this.suggestions = new Map(); // suggestionId -> { userId, range, delta, status }
     this.suggestionCounter = 0;
 
+    // Quick corrections (lightweight auto-corrections with alternates)
+    this.corrections = new Map(); // correctionId -> { userId, range, original, applied, alternates, timestamp }
+    this.correctionCounter = 0;
+
     // Annotations
     this.annotations = new Map(); // annotationId -> { userId, range, text, type }
     this.annotationCounter = 0;
@@ -480,6 +484,174 @@ class WoolfOTDocument {
         }
       }
     }
+  }
+
+  // ========== Quick Corrections ==========
+
+  /**
+   * Apply a quick auto-correction with alternates
+   * Lighter weight than full suggestions - applies immediately but stores alternates
+   * Useful for spelling/grammar fixes that can be reverted or changed
+   *
+   * @param {string} userId - User/agent making the correction
+   * @param {number} index - Start position
+   * @param {number} length - Length of text to correct
+   * @param {string} original - Original (incorrect) text
+   * @param {string} correction - Main correction to apply
+   * @param {Array<string>} alternates - Alternative corrections
+   * @param {object} metadata - Additional metadata (confidence, type, etc.)
+   * @returns {object} Correction info
+   */
+  applyQuickCorrection(userId, index, length, original, correction, alternates = [], metadata = {}) {
+    const correctionId = ++this.correctionCounter;
+
+    // Apply the correction immediately
+    this.deleteRange(index, length, userId);
+    this.insertAt(index, correction, userId);
+
+    // Store correction info for potential revert/alternate selection
+    const correctionInfo = {
+      correctionId,
+      userId,
+      range: { index, length: correction.length },
+      original,
+      applied: correction,
+      alternates,
+      metadata,
+      timestamp: Date.now(),
+      version: this.version
+    };
+
+    this.corrections.set(correctionId, correctionInfo);
+
+    // Keep only last 100 corrections (prevent memory bloat)
+    if (this.corrections.size > 100) {
+      const firstKey = this.corrections.keys().next().value;
+      this.corrections.delete(firstKey);
+    }
+
+    return correctionInfo;
+  }
+
+  /**
+   * Revert a quick correction to original text
+   * @param {number} correctionId - The correction to revert
+   * @param {string} userId - User reverting
+   * @returns {object} Revert result
+   */
+  revertCorrection(correctionId, userId) {
+    const correction = this.corrections.get(correctionId);
+    if (!correction) {
+      throw new Error(`Correction ${correctionId} not found`);
+    }
+
+    // Replace current text with original
+    this.deleteRange(correction.range.index, correction.range.length, userId);
+    this.insertAt(correction.range.index, correction.original, userId);
+
+    // Update correction status
+    correction.reverted = true;
+    correction.revertedBy = userId;
+    correction.revertedAt = Date.now();
+
+    return {
+      correctionId,
+      reverted: true,
+      originalText: correction.original,
+      version: this.version
+    };
+  }
+
+  /**
+   * Switch to an alternate correction
+   * @param {number} correctionId - The correction to modify
+   * @param {number} alternateIndex - Index into alternates array
+   * @param {string} userId - User making the switch
+   * @returns {object} Switch result
+   */
+  switchToAlternate(correctionId, alternateIndex, userId) {
+    const correction = this.corrections.get(correctionId);
+    if (!correction) {
+      throw new Error(`Correction ${correctionId} not found`);
+    }
+
+    if (alternateIndex < 0 || alternateIndex >= correction.alternates.length) {
+      throw new Error(`Alternate index ${alternateIndex} out of range`);
+    }
+
+    const alternate = correction.alternates[alternateIndex];
+
+    // Replace current text with alternate
+    this.deleteRange(correction.range.index, correction.range.length, userId);
+    this.insertAt(correction.range.index, alternate, userId);
+
+    // Update correction record
+    correction.applied = alternate;
+    correction.range.length = alternate.length;
+    correction.alternateSelected = alternateIndex;
+    correction.switchedBy = userId;
+    correction.switchedAt = Date.now();
+
+    return {
+      correctionId,
+      switched: true,
+      alternateIndex,
+      newText: alternate,
+      version: this.version
+    };
+  }
+
+  /**
+   * Get all corrections, optionally filtered
+   * @param {object} filters - Optional filters
+   * @returns {Array} Corrections
+   */
+  getCorrections(filters = {}) {
+    let results = Array.from(this.corrections.values());
+
+    if (filters.userId) {
+      results = results.filter(c => c.userId === filters.userId);
+    }
+
+    if (filters.reverted !== undefined) {
+      results = results.filter(c => !!c.reverted === filters.reverted);
+    }
+
+    return results;
+  }
+
+  /**
+   * Get correction at a specific position
+   * @param {number} index - Position to check
+   * @returns {object|null} Correction if found
+   */
+  getCorrectionAt(index) {
+    for (const correction of this.corrections.values()) {
+      if (index >= correction.range.index &&
+          index < correction.range.index + correction.range.length) {
+        return correction;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Clear old corrections
+   * @param {number} maxAge - Max age in milliseconds (default: 5 minutes)
+   * @returns {number} Number cleared
+   */
+  clearOldCorrections(maxAge = 300000) {
+    const now = Date.now();
+    let cleared = 0;
+
+    for (const [id, correction] of this.corrections.entries()) {
+      if (now - correction.timestamp > maxAge) {
+        this.corrections.delete(id);
+        cleared++;
+      }
+    }
+
+    return cleared;
   }
 
   // ========== Annotations ==========

@@ -186,6 +186,18 @@ class WoolfRexxHandler {
         case 'revert-to-version':
           return await this.revertToVersion(params);
 
+        // Quick correction commands
+        case 'apply-quick-correction':
+          return await this.applyQuickCorrection(params);
+        case 'revert-correction':
+          return await this.revertCorrection(params);
+        case 'switch-to-alternate':
+          return await this.switchToAlternate(params);
+        case 'get-corrections':
+          return await this.getCorrections(params);
+        case 'get-correction-at':
+          return await this.getCorrectionAt(params);
+
         default:
           throw new Error(`Unknown command: ${command}`);
       }
@@ -756,6 +768,115 @@ class WoolfRexxHandler {
     }
 
     return this.otDoc.revertToVersion(version);
+  }
+
+  // ========== Quick Correction Commands ==========
+
+  async applyQuickCorrection(params) {
+    const userId = params['user-id'];
+    const index = parseInt(params.index);
+    const length = parseInt(params.length);
+    const original = params.original;
+    const correction = params.correction;
+    const alternatesParam = params.alternates;
+
+    if (!userId || isNaN(index) || isNaN(length) || !original || !correction) {
+      throw new Error('Required parameters: user-id, index, length, original, correction');
+    }
+
+    // Parse alternates (can be JSON array or comma-separated string)
+    let alternates = [];
+    if (alternatesParam) {
+      if (typeof alternatesParam === 'string') {
+        try {
+          alternates = JSON.parse(alternatesParam);
+        } catch (e) {
+          // Try comma-separated
+          alternates = alternatesParam.split(',').map(s => s.trim());
+        }
+      } else if (Array.isArray(alternatesParam)) {
+        alternates = alternatesParam;
+      }
+    }
+
+    // Build metadata
+    const metadata = {};
+    if (params.confidence) {
+      metadata.confidence = parseFloat(params.confidence);
+    }
+    if (params.type) {
+      metadata.type = params.type;
+    }
+    if (params.reasoning) {
+      metadata.reasoning = params.reasoning;
+    }
+
+    return this.otDoc.applyQuickCorrection(
+      userId,
+      index,
+      length,
+      original,
+      correction,
+      alternates,
+      metadata
+    );
+  }
+
+  async revertCorrection(params) {
+    const correctionId = parseInt(params['correction-id']);
+    const userId = params['user-id'];
+
+    if (isNaN(correctionId) || !userId) {
+      throw new Error('Required parameters: correction-id, user-id');
+    }
+
+    return this.otDoc.revertCorrection(correctionId, userId);
+  }
+
+  async switchToAlternate(params) {
+    const correctionId = parseInt(params['correction-id']);
+    const alternateIndex = parseInt(params['alternate-index']);
+    const userId = params['user-id'];
+
+    if (isNaN(correctionId) || isNaN(alternateIndex) || !userId) {
+      throw new Error('Required parameters: correction-id, alternate-index, user-id');
+    }
+
+    return this.otDoc.switchToAlternate(correctionId, alternateIndex, userId);
+  }
+
+  async getCorrections(params) {
+    const filters = {};
+
+    if (params['user-id']) {
+      filters.userId = params['user-id'];
+    }
+
+    if (params.reverted !== undefined) {
+      filters.reverted = params.reverted === 'true' || params.reverted === true;
+    }
+
+    const corrections = this.otDoc.getCorrections(filters);
+
+    return {
+      corrections,
+      count: corrections.length
+    };
+  }
+
+  async getCorrectionAt(params) {
+    const index = parseInt(params.index);
+
+    if (isNaN(index)) {
+      throw new Error('Index parameter required');
+    }
+
+    const correction = this.otDoc.getCorrectionAt(index);
+
+    return {
+      correction,
+      found: correction !== null
+    };
   }
 
   // ========== Utilities ==========
